@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 import "./ERC20/ERC20.sol";
 import "./ERC20/ERC20Token.sol";
-import "hardhat/console.sol";
 
 interface IExecutableProposal {
     function executeProposal(uint proposalId, uint numVotes, uint numTokens) external payable;    
@@ -221,10 +220,7 @@ contract QuadraticVoting {
         uint amount = msg.value / _tokenPrice;
         _remainingWei += msg.value % _tokenPrice; // La cantidad de Wei sobrante se la 
                                                   // queda el owner como propina
-        
-        console.log("Balance Participant Before:", _ERC20Token.balanceOf(msg.sender));
-        _ERC20Token.mint(msg.sender, amount);        
-        console.log("Balance Participant After:", _ERC20Token.balanceOf(msg.sender));
+        _ERC20Token.mint(msg.sender, amount);
         // _participants[msg.sender] = amount;
     }
 
@@ -270,9 +266,8 @@ contract QuadraticVoting {
 
         for(uint i = 0; i < addressParticipants.length; i++) {
             uint participantTokensInProposal = _proposals[idProp].getParticipantTokens(addressParticipants[i]);
-            console.log("Balance Participant Before Transfer:", _ERC20Token.balanceOf(msg.sender));
+            
             _ERC20Token.transferFrom(prop, addressParticipants[i], participantTokensInProposal);
-            console.log("Balance Participant After Transfer:", _ERC20Token.balanceOf(msg.sender));
             // _participants[participantAddress] += participantTokensInProposal;
         }
 
@@ -281,22 +276,16 @@ contract QuadraticVoting {
     }
     
     function buyTokens(uint tokensToBuy) public payable partipicantExists enoughWeiAmount(tokensToBuy) {
-        console.log("Balance Participant Before Buying:", _ERC20Token.balanceOf(msg.sender));
-        _ERC20Token.mint(msg.sender, tokensToBuy);
-        console.log("Balance Participant After Buying:", _ERC20Token.balanceOf(msg.sender));
-        _remainingWei += msg.value - (_tokenPrice*tokensToBuy);        
+        _ERC20Token.mint(msg.sender, tokensToBuy);        
+        _remainingWei += msg.value - (_tokenPrice*tokensToBuy);
     }
 
-    function sellTokens(uint tokensToSell) external partipicantExists {        
+    function sellTokens(uint tokensToSell) external partipicantExists {
         require(_ERC20Token.balanceOf(msg.sender) >= tokensToSell, "Participant does not have enough tokens to sell!");
-        address participant = msg.sender;
-
-        // Revisar
+                      
         (bool sent, ) = msg.sender.call{value: tokensToSell * _tokenPrice}("");
         require(sent, "Failed to send Wei");
-        console.log("Balance Participant Before Sell:", _ERC20Token.balanceOf(msg.sender));
-        _ERC20Token.burn(participant, tokensToSell);
-        console.log("Balance Participant After Sell:", _ERC20Token.balanceOf(msg.sender));
+        _ERC20Token.burn(tokensToSell);
     }
 
     function getERC20() public view returns (address) {
@@ -324,6 +313,7 @@ contract QuadraticVoting {
         uint tokensInProposal = _proposals[idProp].getParticipantTokens(msg.sender);                
         uint t = (tokensInProposal + 1) / 2;
         uint nV = tokensInProposal;
+
         // Calcular cuantos votos tiene el participante en la propuesta
         while(t < nV) {
             nV = t;
@@ -336,22 +326,14 @@ contract QuadraticVoting {
 
         // Comprobar que el participante posee los suficientes tokens para comprar los votos
         require(_ERC20Token.balanceOf(msg.sender) >= tokensNeeded, "Not enough tokens to vote the proposal!");
-        
-        // console.log("Balance Participant Before:", _ERC20Token.balanceOf(msg.sender));
-        // console.log("Balance Proposal Before:", _ERC20Token.balanceOf(proposal));
+
         // Comprobar que el participante ha cedido (con approve) el uso de esos tokens a la cuenta del contrato de la votacion
         require(_ERC20Token.allowance(msg.sender, proposal) >= tokensNeeded, "Not enough approved tokens!");
-        
-        // console.log("Address sender:", msg.sender);
-        // console.log("Address proposal:", proposal);
+
 
         // Depositar los tokens del participante a la propuesta
-        _ERC20Token.transfer(proposal, tokensNeeded);
+        _ERC20Token.transferFrom(msg.sender, proposal, tokensNeeded);
         _proposals[idProp].addParticipantVotes(tokensNeeded);
-        console.log("Address sender:", msg.sender);
-        console.log("Address proposal:", proposal);
-        console.log("Balance Participant After:", _ERC20Token.balanceOf(msg.sender) );
-        console.log("Balance Proposal After:", _ERC20Token.balanceOf(proposal));
 
         // Comprobar si se puede ejecutar la propuesta
         // _checkAndExecuteProposal(idProp);
