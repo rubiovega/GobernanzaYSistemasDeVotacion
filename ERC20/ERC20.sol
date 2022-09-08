@@ -3,7 +3,6 @@
 
 // Código descargado de https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/ERC20.sol
 
-
 pragma solidity ^0.8.0;
 
 import "./IERC20.sol";
@@ -213,7 +212,7 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     }
 
     /**
-     * @dev Moves `amount` of tokens from `sender` to `recipient`.
+     * @dev Moves `amount` of tokens from `from` to `to`.
      *
      * This internal function is equivalent to {transfer}, and can be used to
      * e.g. implement automatic token fees, slashing mechanisms, etc.

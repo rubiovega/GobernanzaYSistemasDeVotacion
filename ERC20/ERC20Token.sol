@@ -13,7 +13,7 @@ contract ERC20Token is ERC20 {
     }
 
     modifier onlyOwner() {
-        require(msg.sender == _owner, "Not the owner of the contract!");
+        require(msg.sender == _owner, "Not the owner of ERC20Token!");
         _;
     }
 
@@ -26,8 +26,8 @@ contract ERC20Token is ERC20 {
         super._mint(account, amount);
     }
 
-    function burn(uint256 amount) external onlyOwner {
-        _burn(_msgSender(), amount);
+    function burn(address participant, uint256 amount) external onlyOwner {
+        _burn(participant, amount);
     }
 
 }
