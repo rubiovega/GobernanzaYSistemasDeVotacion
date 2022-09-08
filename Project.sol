@@ -161,7 +161,7 @@ contract QuadraticVoting {
     }
 
     // Modifier que comprueba si un participante esta  inscrito 
-    modifier partipicantExists() {
+    modifier participantExists() {
         require (_participants[msg.sender], "The participant is not registered!");                
         _;
     }
@@ -198,7 +198,7 @@ contract QuadraticVoting {
         _ERC20Token.mint(msg.sender, amount);    
     }
 
-    function addProposal(string memory title, string memory description, uint budget, address execProp) external votingIsOpen returns (uint) {
+    function addProposal(string memory title, string memory description, uint budget, address execProp) external votingIsOpen participantExists returns (uint) {
         _idProposal++;
         _proposals[_idProposal] = new Proposal(title, description, budget, msg.sender, execProp);
 
@@ -242,12 +242,12 @@ contract QuadraticVoting {
         delete _proposals[idProp];                
     }
     
-    function buyTokens(uint tokensToBuy) public payable partipicantExists enoughWeiAmount(tokensToBuy) { 
+    function buyTokens(uint tokensToBuy) public payable participantExists enoughWeiAmount(tokensToBuy) { 
         _ERC20Token.mint(msg.sender, tokensToBuy);        
         _remainingWei = _remainingWei + msg.value - _tokenPrice * tokensToBuy;        
     }
 
-    function sellTokens(uint tokensToSell) external partipicantExists {        
+    function sellTokens(uint tokensToSell) external participantExists {        
         require(_ERC20Token.balanceOf(msg.sender) >= tokensToSell, "Participant does not have enough tokens to sell!");
         address participant = msg.sender;
 
@@ -277,7 +277,7 @@ contract QuadraticVoting {
         return (_proposals[idProp].getTitle(), _proposals[idProp].getDescription(), _proposals[idProp].getBudget());
     }
 
-    function stake(uint idProp, uint numVotes) external votingIsOpen partipicantExists {
+    function stake(uint idProp, uint numVotes) external votingIsOpen participantExists {
         require(!_proposals[idProp].isApproved(), "Proposal already approved!");
 
         uint tokensInProposal = _proposals[idProp].getParticipantTokens(msg.sender);                
@@ -309,7 +309,7 @@ contract QuadraticVoting {
             _checkAndExecuteProposal(idProp);
     }
 
-    function withdrawFromProposal(uint numVotes, uint idProp) external votingIsOpen partipicantExists {
+    function withdrawFromProposal(uint numVotes, uint idProp) external votingIsOpen participantExists {
         require(!_proposals[idProp].isApproved(), "Proposal is already approved!");
 
         uint numTokensInProposal = _proposals[idProp].getParticipantTokens(msg.sender);
@@ -331,13 +331,12 @@ contract QuadraticVoting {
         require(numTokensInProposal >= tokensToWithdraw, "Can't withdraw that amount of tokens!");
         _proposals[idProp].withdrawParticipantVotes(msg.sender, numVotes, tokensToWithdraw);
 
-        // address participant = msg.sender;        
         _ERC20Token.transfer(msg.sender, tokensToWithdraw);
     }
 
     function calculateThreshold(uint idProp) internal view returns (uint) {
         uint8 percentage = 20;
-        uint threshold =  _pendingProposals.length + _signalingProposals.length + _numParticipants * percentage/100 + _proposals[idProp].getBudget()/_totalBudget; 
+        uint threshold =  _pendingProposals.length + _signalingProposals.length + _numParticipants * percentage/100 + _proposals[idProp].getBudget()/_totalBudget;
         return threshold;
     }
 
