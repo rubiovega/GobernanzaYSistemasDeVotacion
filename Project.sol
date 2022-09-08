@@ -12,11 +12,10 @@ contract ExecutableProposal is IExecutableProposal {
 
     function executeProposal(uint proposalId, uint numVotes, uint numTokens) external payable override {
         emit ProposalExecution("Executing proposal with data (id, votes, tokens, budget): ", proposalId, numVotes, numTokens, msg.value);
-        //TODO
     }
 }
 
-contract Proposal {
+contract Proposal {    
     string _title;   // Titulo de la propuesta
     string _description;    // Descripcion de la propuesta
     uint _budget;           // Presupuesto de la propuesta
@@ -25,9 +24,9 @@ contract Proposal {
     uint _numTokens;  // Numero de tokens recaudados por el proposal
     uint _numVotes;  // Numero de votos que tiene la propuesta
     address[] _addressParticipants; // Array que contiene los address de los participantes que votan la propuesta
-    mapping (address => uint) _participantsProp; // Mapping cuya clave es el address y id
-    mapping (uint => uint) _participantTokens; // mapping de cada identificador de participante y sus tokens en la propuesta
-    address _executableProposal;    // Direcci�n que implementa la interfaz IExecutableProposal
+    mapping (address => uint) _participantTokens; // Mapping cuya clave es el address del participante y valor los tokens que ha
+                                                  // depositado en la propuesta
+    address _executableProposal;    // Direccion que implementa la interfaz IExecutableProposal
 
     constructor(string memory title, string memory description, uint budget, address creator, address execProp) {
         _title = title;
@@ -48,8 +47,8 @@ contract Proposal {
         return _addressParticipants;
     }
 
-    function getParticipantTokens(uint id) external view returns (uint) {
-        return _participantTokens[id];
+    function getParticipantTokens(address participant) external view returns (uint) {
+        return _participantTokens[participant];
     }
 
     function getTitle() external view returns (string memory) {
@@ -80,49 +79,50 @@ contract Proposal {
         return _executableProposal;
     }
 
-    function addParticipantVotes(uint nV, uint nT, uint id) external {
-        if(_participantTokens[id] == 0) {
-            _addressParticipants.push(msg.sender);
-            _participantsProp[msg.sender] = id;
+    function approveProposal() external {
+        _approved = true;
+    }
+
+    function addParticipantVotes(address participant, uint nV, uint nT) external {
+        if(_participantTokens[participant] == 0) {
+            _addressParticipants.push(participant);
         }
 
-        _participantTokens[id] = _participantTokens[id] + nT;        
+        _participantTokens[participant] = _participantTokens[participant] + nT;        
         _numTokens = _numTokens + nT;
         _numVotes = _numVotes + nV;
     }
 
-    function withdrawParticipantVotes(uint nV, uint tokensToWithdraw, uint id) external {
-        _participantTokens[id] = _participantTokens[id] - tokensToWithdraw;
+    function withdrawParticipantVotes(address participant, uint nV, uint tokensToWithdraw) external {       
+        _participantTokens[participant] = _participantTokens[participant] - tokensToWithdraw;
         _numVotes = _numVotes - nV;
         _numTokens = _numTokens - tokensToWithdraw;
         
-        // Si el participante no tiene tokens, se borra de la propuesta
-        if(_participantTokens[id] == 0) {            
+        // Si el participante deja de tener tokens, se borra de la propuesta
+        if(_participantTokens[participant] == 0) {            
             uint pos = 0;
 
-            while(_addressParticipants[pos] != msg.sender)
+            while(_addressParticipants[pos] != participant)
                 pos++;
 
-            for(uint i = pos; i < _addressParticipants.length; i++)
+            for(uint i = pos; i < _addressParticipants.length - 1; i++)
                 _addressParticipants[i] = _addressParticipants[i+1];
 
             _addressParticipants.pop();
-            _participantsProp[msg.sender] = 0;            
         }
     }
 }
 
-contract QuadraticVoting {
+contract QuadraticVoting {    
     address _owner;  // Contract owner.    
     uint _maxTokens;    // Numero de tokens total
     uint _tokenPrice;   // Precio del token
     string _name;       // Nombre del token
     string _symbol;     // Simpobolo del token
     ERC20Token _ERC20Token;  // ERC20Token contract
-    bool public _votingOpen; // Booleano que indica si la votaci�n esta abierta
-    bool _votingClosed; // Booleano que indica si la votaci�n esta cerrada
+    bool public _votingOpen; // Booleano que indica si la votacion esta abierta
     uint _totalBudget;  // Presupuesto del que se dispone para financiar propuestas
-    uint _numParticipants;
+    uint _numParticipants;  // Numero de participantes registrados
     
     uint _idProposal;   // Identificador de la ultima propuesta registrada
     mapping (uint => Proposal) _proposals;  // Mapping que contiene como clave el identificador de la 
@@ -131,11 +131,8 @@ contract QuadraticVoting {
     uint[] _pendingProposals;   // Array con los identificadores de las propuestas pendientes
     uint[] _approvedProposals;   // Array con los identificadores de las propuestas aprovadas
     uint[] _signalingProposals;   // Array con los identificadores de las propuestas signaling
-    
-    // mapping (address => bool) private _participants; // Mapping de participantes que almacenan la direccion y 
-    //                                                  // un booleano para indicar si esta registrado o no 
-    mapping (address => uint) _participants;    // Mapping con clave direcion del participante y valor su identificador
-                                                // siendo 1 el id del primer participante, el 2 el del segundo participante...
+    mapping (address => bool) _participants;    // Mapping de participantes que almacenan la direccion y 
+                                                // un booleano para indicar si esta registrado o no                                                
     uint public _remainingWei; // Variable para almacenar la propina del owner
 
  
@@ -150,7 +147,6 @@ contract QuadraticVoting {
         _numParticipants = 0;
          _remainingWei = 0;
         _votingOpen = false;
-        _votingClosed = false;
         _ERC20Token = new ERC20Token(_maxTokens,_name, _symbol);
     }
 
@@ -164,10 +160,9 @@ contract QuadraticVoting {
         _;
     }
 
-    // Modifier que comprueba si un participante est  inscrito 
+    // Modifier que comprueba si un participante esta  inscrito 
     modifier partipicantExists() {
-        //supongo que hay una mejor forma de comprobar que esta dado de alta
-        require (_participants[msg.sender] != 0, "The participant is not registered!");                
+        require (_participants[msg.sender], "The participant is not registered!");                
         _;
     }
 
@@ -188,15 +183,14 @@ contract QuadraticVoting {
     function openVoting() external payable onlyOwner {        
         if(!_votingOpen) {
             _votingOpen = true;
-            _votingClosed = false;    
             _totalBudget = msg.value;
         }
     }
 
     function addParticipant() external payable enoughWeiToBuyAToken {
-        require(_participants[msg.sender] == 0, "Participant already exists!");
+        require(!_participants[msg.sender], "Participant already exists!");
         _numParticipants++;
-        _participants[msg.sender] = _numParticipants;
+        _participants[msg.sender] = true;
         
         uint amount = msg.value / _tokenPrice;
         _remainingWei = _remainingWei + msg.value % _tokenPrice;    // La cantidad de Wei sobrante se la 
@@ -212,7 +206,7 @@ contract QuadraticVoting {
         if(budget != 0) {
             _pendingProposals.push(_idProposal);
         }
-        // Si la propuesta es signaling, anyadimos la propuesta al array de _signalingProposals
+        // Si la propuesta es signaling, anadimos la propuesta al array de _signalingProposals
         else {
             _signalingProposals.push(_idProposal);
         }
@@ -222,37 +216,23 @@ contract QuadraticVoting {
     function cancelProposal(uint idProp) external votingIsOpen {
         require (msg.sender == _proposals[idProp].getCreator(), "Not the proposal creator!");            
         require(!_proposals[idProp].isApproved(), "Can't cancel an approved proposal!");                
-        uint pos = 0;
         
         // Si es una propuesta de financiacion, eliminamos la propuesta
         // del array de _pendingProposals
         if(_proposals[idProp].getBudget() != 0) {
-            while(_pendingProposals[pos] != idProp)
-                pos++;
-
-            for(uint i = pos; i < _pendingProposals.length-1; i++) 
-                _pendingProposals[i] = _pendingProposals[i+1];
-        
-            _pendingProposals.pop();
+           deletePendingProposal(idProp);
         }
         // Si es una propuesta de signaling, eliminamos la propuesta
         // del array de _signalingProposals
         else {
-            while(_signalingProposals[pos] != idProp)            
-                pos++;
-
-            for(uint i = pos; i < _signalingProposals.length-1; i++)
-                _signalingProposals[i] = _signalingProposals[i+1];
-
-            _signalingProposals.pop();
+            deleteSignalingProposal(idProp);
         }
                         
         address[] memory addressParticipants = _proposals[idProp].getParticipantsAddresses();
         
         // Retirar los tokens de los participantes de la propuesta
         for(uint i = 0; i < addressParticipants.length; i++) {
-            uint id = _participants[addressParticipants[i]];
-            uint participantTokensInProposal = _proposals[idProp].getParticipantTokens(id);
+            uint participantTokensInProposal = _proposals[idProp].getParticipantTokens(addressParticipants[i]);
 
             // Depositar los tokens de QuadraticVoting al participante
             _ERC20Token.transfer(addressParticipants[i], participantTokensInProposal);
@@ -298,9 +278,9 @@ contract QuadraticVoting {
     }
 
     function stake(uint idProp, uint numVotes) external votingIsOpen partipicantExists {
-        address participant = msg.sender;
-        uint id = _participants[msg.sender];
-        uint tokensInProposal = _proposals[idProp].getParticipantTokens(id);                
+        require(!_proposals[idProp].isApproved(), "Proposal already approved!");
+
+        uint tokensInProposal = _proposals[idProp].getParticipantTokens(msg.sender);                
         uint t = (tokensInProposal + 1) / 2;
         uint nV = tokensInProposal;
         
@@ -321,21 +301,21 @@ contract QuadraticVoting {
         require(_ERC20Token.allowance(msg.sender, address(this)) >= tokensNeeded, "Not enough approved tokens!");
 
         // Depositar los tokens del participante a QuadraticVoting
-        _ERC20Token.transferFrom(participant, address(this), tokensNeeded);
-        _proposals[idProp].addParticipantVotes(numVotes, tokensNeeded, id);
+        _ERC20Token.transferFrom(msg.sender, address(this), tokensNeeded);
+        _proposals[idProp].addParticipantVotes(msg.sender, numVotes, tokensNeeded);
 
-        // Comprobar si la propuesta es de financiaci�n y si se puede ejecutar la propuesta
+        // Comprobar si la propuesta es de financiacion y si se puede ejecutar la propuesta
         if(_proposals[idProp].getBudget() != 0)
             _checkAndExecuteProposal(idProp);
     }
 
     function withdrawFromProposal(uint numVotes, uint idProp) external votingIsOpen partipicantExists {
         require(!_proposals[idProp].isApproved(), "Proposal is already approved!");
-        uint id = _participants[msg.sender];    
-        uint numTokensInProposal = _proposals[idProp].getParticipantTokens(id);
-        
-        require(numTokensInProposal != 0, "Participant does not have votes in proposal!");
 
+        uint numTokensInProposal = _proposals[idProp].getParticipantTokens(msg.sender);
+
+        require(numTokensInProposal != 0, "Participant does not have tokens in this proposal!");
+                
         uint t = (numTokensInProposal + 1) / 2;
         uint nV = numTokensInProposal;
 
@@ -347,10 +327,12 @@ contract QuadraticVoting {
 
         // Retirar los tokens que ha depositado el participante en la propuesta
         uint tokensToWithdraw = numTokensInProposal - (numVotes * numVotes);
-        _proposals[idProp].withdrawParticipantVotes(numVotes, tokensToWithdraw, id);
+        
+        require(numTokensInProposal >= tokensToWithdraw, "Can't withdraw that amount of tokens!");
+        _proposals[idProp].withdrawParticipantVotes(msg.sender, numVotes, tokensToWithdraw);
 
-        address participant = msg.sender;        
-        _ERC20Token.transfer(participant, tokensToWithdraw);
+        // address participant = msg.sender;        
+        _ERC20Token.transfer(msg.sender, tokensToWithdraw);
     }
 
     function calculateThreshold(uint idProp) internal view returns (uint) {
@@ -362,47 +344,49 @@ contract QuadraticVoting {
     function _checkAndExecuteProposal(uint idProp) internal {
         // Comprobar el presupuesto del contrato de votacion mas el importe recaudado por los votos 
         // recibidos es suficiente para financiar la propuesta
-        if(_totalBudget + _proposals[idProp].getNumTokens() * _tokenPrice >= _proposals[idProp].getBudget()) {
-            // Si el n�mero de votos recibidos supera un umbral, ejecutamos la propuesta
-            if (_proposals[idProp].getNumVotes() >= calculateThreshold(idProp)) {            
+        uint numTokens = _proposals[idProp].getNumTokens();
+        uint budget = _proposals[idProp].getBudget();
+        uint numVotes = _proposals[idProp].getNumVotes();
+
+        if(_totalBudget + numTokens * _tokenPrice >= budget) {
+            // Si el numero de votos recibidos supera un umbral, ejecutamos la propuesta
+            if (numVotes >= calculateThreshold(idProp)) {          
+                
                 // Actualizar el presupuesto disponible para propuestas
-                _totalBudget = _totalBudget + _proposals[idProp].getNumTokens() * _tokenPrice - _proposals[idProp].getBudget();
+                _totalBudget = _totalBudget + numTokens * _tokenPrice - budget;
                 
-                // Eliminar propuesta del array de _pendingProposals
-                uint pos = 0;
-                while(_pendingProposals[pos] != idProp)
-                    pos++;
+                // Eliminar propuesta del array de _pendingProposals                
+                deletePendingProposal(idProp);
                 
-                for(uint i = 0; i < _pendingProposals.length - 1; i++)
-                    _pendingProposals[i] = _pendingProposals[i+1];
-                
-                _pendingProposals.pop();
-                
+                // Indicar la propuesta como aprobada
+                _proposals[idProp].approveProposal();
+
                 // Anadir propuesta al array de _approvedProposals
                 _approvedProposals.push(idProp);
                 
-                // Indicar la propuesta como aprobada
-
-
                 // Ejecutar la propuesta
-                IExecutableProposal(address(_proposals[idProp].getExecutableProposal())).executeProposal{value: _proposals[idProp].getBudget(), gas: 100000}(idProp, _proposals[idProp].getNumVotes(), _proposals[idProp].getNumTokens());            
+                IExecutableProposal(address(_proposals[idProp].getExecutableProposal())).executeProposal{value: budget, gas: 100000}(idProp, numVotes, numTokens);            
             }
         }
     }
 
     function closeVoting() external onlyOwner {        
         Proposal p;
-        
+        uint i;
+        uint j;
+        uint k;
+        address[] memory addressParticipants;
+        uint participantTokensInProposal;
+
         // Devolver a los participantes los tokens recibidos en aquellas propuestas de 
         // financiacion que no han sido aprobadas
-        for(uint i = 0; i < _pendingProposals.length; i++) {
+        for(i = 0; i < _pendingProposals.length; i++) {
             p = _proposals[_pendingProposals[i]];            
-            address[] memory addressParticipants = p.getParticipantsAddresses();
+            addressParticipants = p.getParticipantsAddresses();
 
             // Retirar los tokens de los participantes de la propuesta
-            for(uint j = 0; j < addressParticipants.length; j++) {
-                uint id = _participants[addressParticipants[j]];
-                uint participantTokensInProposal = p.getParticipantTokens(id);
+            for(j = 0; j < addressParticipants.length; j++) {
+                participantTokensInProposal = p.getParticipantTokens(addressParticipants[j]);
 
                 // Depositar los tokens de QuadraticVoting al participante
                 _ERC20Token.transfer(addressParticipants[j], participantTokensInProposal);
@@ -412,35 +396,39 @@ contract QuadraticVoting {
         // Eliminar los identificadores del array _pendingProposals
         uint pendLength = _pendingProposals.length;
 
-        for(uint k = 0; k < pendLength; k++)
+        for(k = 0; k < pendLength; k++)
             _pendingProposals.pop();
 
         // Ejecutar las propuestas signaling y devolver los tokens recibidos a sus propietarios
-        for(uint i = 0; i < _signalingProposals.length; i++) {
+        for(i = 0; i < _signalingProposals.length; i++) {
             p = _proposals[_signalingProposals[i]];            
-            address[] memory addressParticipants = p.getParticipantsAddresses();
+            addressParticipants = p.getParticipantsAddresses();
 
             // Retirar los tokens de los participantes de la propuesta
-            for(uint j = 0; j < addressParticipants.length; j++) {
-                uint id = _participants[addressParticipants[j]];
-                uint participantTokensInProposal = p.getParticipantTokens(id);
+            for(j = 0; j < addressParticipants.length; j++) {
+                participantTokensInProposal = p.getParticipantTokens(addressParticipants[j]);
 
                 // Depositar los tokens de QuadraticVoting al participante
                 _ERC20Token.transfer(addressParticipants[j], participantTokensInProposal);
             }
-            IExecutableProposal(address(p.getExecutableProposal())).executeProposal{value: p.getBudget(), gas: 100000}(_signalingProposals[i], p.getNumVotes(), p.getNumTokens());
+
+            _proposals[_signalingProposals[i]].approveProposal();
+            _approvedProposals.push(_signalingProposals[i]);
+
+            IExecutableProposal(address(p.getExecutableProposal())).executeProposal{value: 0, gas: 100000}(_signalingProposals[i], p.getNumVotes(), p.getNumTokens());
         }
 
         // Eliminar los identificadores del array _signalingProposals
         uint signLength = _signalingProposals.length;
 
-        for(uint k = 0; k < signLength; k++)
+        for(k = 0; k < signLength; k++)
             _signalingProposals.pop();
 
-        // El presupuesto de la votación no gastado en las propuestas se transfiere
-        // al propietario del contrato de votación
-        (bool sent,) = msg.sender.call{value: _totalBudget}("");
-        require(sent, "Failed to send Wei");    
+        // Eliminar los identificadores del array _approvedProposals
+        uint apprLength = _approvedProposals.length;
+
+        for(k = 0; k < apprLength; k++)
+            _approvedProposals.pop();
 
         // Inicializar las variables de estado para permitir
         // abrir un nuevo proceso de votacion        
@@ -448,6 +436,36 @@ contract QuadraticVoting {
         _idProposal = 0;        
         _remainingWei = 0;
         _votingOpen = false;
-        _votingClosed = true;
+
+        // El presupuesto de la votación no gastado en las propuestas se transfiere
+        // al propietario del contrato de votación y también la propina que ha recibido a lo largo del proceso
+        // de votación
+        (bool sent,) = msg.sender.call{value: _totalBudget + _remainingWei}("");
+        require(sent, "Failed to send Wei");    
+    }
+
+    // Funcion interna para eliminar una propuesta del array de _pendingProposals
+    function deletePendingProposal(uint idProp) internal {
+        uint pos = 0;
+
+        while(_pendingProposals[pos] != idProp)
+                pos++;
+
+        for(uint i = pos; i < _pendingProposals.length-1; i++) 
+            _pendingProposals[i] = _pendingProposals[i+1];
+    
+        _pendingProposals.pop();
+    }
+
+    // Funcion interna para eliminar una propuesta del array de _signalingProposals
+    function deleteSignalingProposal(uint idProp) internal {
+        uint pos = 0;
+        while(_signalingProposals[pos] != idProp)            
+                pos++;
+
+            for(uint i = pos; i < _signalingProposals.length-1; i++)
+                _signalingProposals[i] = _signalingProposals[i+1];
+
+            _signalingProposals.pop();
     }
 }
